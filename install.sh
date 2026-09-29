@@ -5,10 +5,10 @@
 # 功能: 安装 Realm、转发规则增删查、服务管理
 # 适配: Debian / Ubuntu / CentOS / Alpine
 #       systemd / OpenRC / 无init(nohup) 三级服务托管
-# 快捷指令: 安装后输入 realm 即可打开菜单
+# 快捷指令: 安装后输入 rl 即可打开菜单 (rl = realm light)
 # =========================================================
 
-VERSION="2.0.1"
+VERSION="2.0.2"
 
 # 脚本的 Raw 链接 (用于安装快捷命令及自更新)
 SCRIPT_URL="https://raw.githubusercontent.com/qingshous/realm-installer/main/install.sh"
@@ -16,7 +16,9 @@ SCRIPT_URL="https://raw.githubusercontent.com/qingshous/realm-installer/main/ins
 # === 关键路径定义 ===
 CONFIG_FILE="/etc/realm/config.toml"
 BIN_PATH="/usr/local/bin/realm-bin"      # 核心程序 (改名避免与快捷命令冲突)
-MENU_PATH="/usr/local/bin/realm"         # 快捷管理命令
+MENU_PATH="/usr/local/bin/rl"            # 快捷管理命令 (用户输入 rl 即运行此脚本)
+LEGACY_MENU="/usr/local/bin/realm"       # 旧版快捷命令路径 (会与 realm-xwPF 内核抢路径, 自动清理)
+MENU_MARK="Realm 一键安装与管理脚本"      # 用于识别该路径上的文件是否为本脚本
 SERVICE_FILE="/etc/systemd/system/realm.service"
 OPENRC_FILE="/etc/init.d/realm"
 PID_FILE="/run/realm.pid"
@@ -193,7 +195,7 @@ setup_autostart_nohup() {
         ( crontab -l 2>/dev/null | grep -v 'realm-installer'; echo "@reboot ${BIN_PATH} -c ${CONFIG_FILE} >>${LOG_FILE} 2>&1 &  # realm-installer" ) | crontab - \
             && info "已通过 crontab @reboot 设置开机自启"
     else
-        warn "无 init 系统且未找到 crontab, 机器重启后需手动执行: realm"
+        warn "无 init 系统且未找到 crontab, 机器重启后需手动执行: rl"
     fi
 }
 
@@ -258,6 +260,12 @@ delete_rule_block() {
 #  1. 安装 Realm
 # ============================================================
 install_realm() {
+    # 与 realm-xwPF 冲突提醒 (两者都用 realm.service 与 /etc/realm/config.toml)
+    if [ -f "/usr/local/bin/xwPF.sh" ]; then
+        warn "检测到已安装 realm-xwPF, 两者服务名/配置路径相同, 同时运行会互相接管"
+        ask_yn "仍要继续?" || { info "已取消"; return 1; }
+    fi
+
     if [ -f "$BIN_PATH" ]; then
         warn "检测到已安装 Realm ($("$BIN_PATH" --version 2>/dev/null | head -1)), 将重装内核 (配置保留)"
         ask_yn "确认重装?" || { info "已取消"; return 1; }
@@ -286,12 +294,17 @@ install_realm() {
     info "内核已安装: $("$BIN_PATH" --version 2>/dev/null | head -1)"
 
     # 安装快捷命令 (下载自身, 带校验)
-    info "配置快捷管理命令 realm ..."
+    info "配置快捷管理命令 rl ..."
     local tmp_script
     tmp_script=$(mktemp) || return 1
     if download "$SCRIPT_URL" "$tmp_script" && head -n 1 "$tmp_script" | grep -q '^#!/bin/bash' && bash -n "$tmp_script" 2>/dev/null; then
         chmod +x "$tmp_script"
         mv -f "$tmp_script" "$MENU_PATH"
+        # 清理旧版快捷命令 realm (该路径与 realm-xwPF 的内核路径冲突)
+        if [ -f "$LEGACY_MENU" ] && grep -q "$MENU_MARK" "$LEGACY_MENU" 2>/dev/null; then
+            rm -f "$LEGACY_MENU"
+            info "已清理旧版快捷命令 realm (统一改用 rl)"
+        fi
     else
         rm -f "$tmp_script"
         warn "快捷命令安装失败 (网络问题), 可稍后菜单选 7 重试"
@@ -362,7 +375,7 @@ EOF
     echo ""
     line
     info "Realm 安装成功!"
-    [ -f "$MENU_PATH" ] && info "以后输入 ${YELLOW}realm${GREEN} 即可打开本菜单"
+    [ -f "$MENU_PATH" ] && info "以后输入 ${YELLOW}rl${GREEN} 即可打开本菜单"
     info "下一步: 菜单选 2 添加第一条转发规则 (添加后服务自动启动)"
     line
 }
@@ -551,7 +564,7 @@ update_script() {
         err "下载失败 (已尝试直连/ghproxy/gh-proxy)"; rm -f "$tmp_script"; return 1
     fi
     if ! head -n 1 "$tmp_script" | grep -q '^#!/bin/bash' || ! bash -n "$tmp_script" 2>/dev/null; then
-        err "下载内容校验失败, 已取消 (现有 realm 命令不受影响)"; rm -f "$tmp_script"; return 1
+        err "下载内容校验失败, 已取消 (现有 rl 命令不受影响)"; rm -f "$tmp_script"; return 1
     fi
     new_ver=$(grep -m1 '^VERSION=' "$tmp_script" | cut -d'"' -f2)
     if [ "$new_ver" = "$VERSION" ]; then
@@ -559,10 +572,15 @@ update_script() {
     fi
     chmod +x "$tmp_script"
     cp -f "$tmp_script" "$MENU_PATH" 2>/dev/null
+    # 清理旧版快捷命令 realm (该路径与 realm-xwPF 内核冲突)
+    if [ -f "$LEGACY_MENU" ] && grep -q "$MENU_MARK" "$LEGACY_MENU" 2>/dev/null; then
+        rm -f "$LEGACY_MENU"
+        info "已清理旧版快捷命令 realm (统一改用 rl)"
+    fi
     # 文件方式运行时同时覆盖本体
     [ -f "${BASH_SOURCE[0]}" ] && [ "${BASH_SOURCE[0]}" != "$MENU_PATH" ] && cp -f "$tmp_script" "${BASH_SOURCE[0]}" 2>/dev/null
     rm -f "$tmp_script"
-    info "更新完成: v${VERSION} -> v${new_ver}, 请重新运行 realm"
+    info "更新完成: v${VERSION} -> v${new_ver}, 请重新运行 rl"
     exit 0
 }
 
@@ -575,6 +593,10 @@ uninstall_realm() {
         realm_ctl disable >/dev/null 2>&1
         realm_ctl stop >/dev/null 2>&1
         remove_autostart_nohup
+        # 旧版快捷命令路径仅在确认是本脚本时才删 (避免误删 xwPF 内核)
+        if [ -f "$LEGACY_MENU" ] && grep -q "$MENU_MARK" "$LEGACY_MENU" 2>/dev/null; then
+            rm -f "$LEGACY_MENU"
+        fi
         rm -f "$SERVICE_FILE" "$OPENRC_FILE" "$BIN_PATH" "$MENU_PATH" "$PID_FILE"
         rm -rf /etc/realm
         has_systemd && systemctl daemon-reload 2>/dev/null
@@ -598,7 +620,7 @@ show_menu() {
     echo -e "${CYAN}╔════════════════════════════════════════════╗"
     echo -e "║       Realm 端口转发 一键管理脚本          ║"
     echo -e "╚════════════════════════════════════════════╝${PLAIN}"
-    echo -e "  快捷命令: realm    版本: v${VERSION}${tag}"
+    echo -e "  快捷命令: rl    版本: v${VERSION}${tag}"
     echo ""
     echo -e "  ${GREEN}1${PLAIN}. 安装 Realm"
     echo -e "  ${GREEN}2${PLAIN}. 添加转发规则"

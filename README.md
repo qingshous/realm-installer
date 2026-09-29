@@ -13,6 +13,7 @@
 - **规则管理**：规则编号列表 + 按编号删除（原版只能追加不能删）
 - **输入校验**：端口 1-65535 校验、监听端口查重、落地地址格式校验、IPv6 自动加括号、可选双栈 `[::]` 监听
 - **卸载二次确认**；防火墙检测到啥用啥（ufw/firewalld），都没有则提示而非强装 ufw
+- **快捷命令为 `rl`**：不占用 `realm` 路径，避免与 [realm-xwPF](https://github.com/qingshous/realm-xwPF)（内核就在 `/usr/local/bin/realm`）冲突；同理不会用 `rm` 这种会覆盖系统命令的名字
 - **下载到临时目录**，不污染当前目录；操作后真实验证服务存活
 
 ## 使用
@@ -29,7 +30,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/qingshous/realm-installer/ma
 bash <(curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/qingshous/realm-installer/main/install.sh)
 ```
 
-安装后随时输入 `realm` 唤出菜单。
+安装后随时输入 `rl` 唤出菜单（rl = realm light；旧版的 `realm` 快捷命令会自动迁移清理）。
 
 ### 菜单
 
@@ -50,7 +51,7 @@ bash <(curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/qingshou
 | 项 | 路径 |
 |----|------|
 | 内核 | `/usr/local/bin/realm-bin` |
-| 快捷命令 | `/usr/local/bin/realm` |
+| 快捷命令 | `/usr/local/bin/rl` |
 | 配置 | `/etc/realm/config.toml`（600） |
 | 服务 | systemd `realm.service` / OpenRC `/etc/init.d/realm` / nohup（日志 `/var/log/realm.log`） |
 
