@@ -8,7 +8,7 @@
 # 快捷指令: 安装后输入 realm 即可打开菜单
 # =========================================================
 
-VERSION="2.0.0"
+VERSION="2.0.1"
 
 # 脚本的 Raw 链接 (用于安装快捷命令及自更新)
 SCRIPT_URL="https://raw.githubusercontent.com/qingshous/realm-installer/main/install.sh"
@@ -345,20 +345,25 @@ EOF
         warn "未检测到 systemd/OpenRC, 使用 nohup 后台模式 (日志: ${LOG_FILE})"
     fi
 
-    realm_ctl enable || { err "服务启动失败, 请查看: ${LOG_FILE}"; return 1; }
-    setup_autostart_nohup
-    sleep 1
-
-    if ! realm_running; then
-        err "服务启动后未存活, 请检查: ${LOG_FILE}"
-        return 1
+    # realm 的 TOML 必须至少有一条 [[endpoints]], 空配置启动会 panic
+    # 所以: 有规则才启动+自启, 无规则只写好服务文件, 等首条规则添加时启动
+    if [ "$(rule_count)" -gt 0 ]; then
+        realm_ctl enable || { err "服务启动失败, 请查看: ${LOG_FILE}"; return 1; }
+        setup_autostart_nohup
+        sleep 1
+        if ! realm_running; then
+            err "服务启动后未存活, 请检查: ${LOG_FILE}"
+            return 1
+        fi
+    else
+        warn "暂无转发规则, 服务暂不启动 (realm 不允许空配置运行)"
     fi
 
     echo ""
     line
-    info "Realm 安装成功并已启动!"
+    info "Realm 安装成功!"
     [ -f "$MENU_PATH" ] && info "以后输入 ${YELLOW}realm${GREEN} 即可打开本菜单"
-    info "下一步: 菜单选 2 添加转发规则"
+    info "下一步: 菜单选 2 添加第一条转发规则 (添加后服务自动启动)"
     line
 }
 
@@ -424,13 +429,18 @@ EOF
 
     firewall_open "$listen_port"
 
-    # 重启 + 真实验证
-    realm_ctl restart >/dev/null 2>&1
+    # 重启 + 真实验证 (首条规则: 启动并设置开机自启)
+    if realm_running; then
+        realm_ctl restart >/dev/null 2>&1
+    else
+        realm_ctl enable >/dev/null 2>&1
+        setup_autostart_nohup
+    fi
     sleep 1
     if realm_running; then
         info "规则添加成功: 本机 ${listen_addr}:${listen_port} --> ${remote_ip}:${remote_port}"
     else
-        err "重启后服务未存活, 请检查配置和日志: ${LOG_FILE}"
+        err "启动后服务未存活, 请检查配置和日志: ${LOG_FILE}"
         return 1
     fi
 }
@@ -464,13 +474,20 @@ del_rule() {
     target_line=$(parse_rules | awk -F'|' -v n="$num" '$1==n {print $2" --> "$3}')
     if ask_yn "确认删除规则 ${num} (${target_line})?"; then
         delete_rule_block "$num" || { err "删除失败"; return 1; }
-        realm_ctl restart >/dev/null 2>&1
-        sleep 1
-        if realm_running; then
-            info "规则 ${num} 已删除 (防火墙已放行的端口不会自动回收, 如需要请手动关闭)"
+        if [ "$(rule_count)" -eq 0 ]; then
+            # 最后一条规则删除后 realm 无法运行 (空配置 panic), 停止并取消自启
+            realm_ctl disable >/dev/null 2>&1
+            remove_autostart_nohup
+            info "规则 ${num} 已删除, 已无剩余规则, 服务已停止 (防火墙已放行的端口请按需手动关闭)"
         else
-            err "重启后服务未存活, 请检查: ${LOG_FILE}"
-            return 1
+            realm_ctl restart >/dev/null 2>&1
+            sleep 1
+            if realm_running; then
+                info "规则 ${num} 已删除 (防火墙已放行的端口不会自动回收, 如需要请手动关闭)"
+            else
+                err "重启后服务未存活, 请检查: ${LOG_FILE}"
+                return 1
+            fi
         fi
     else
         info "已取消"

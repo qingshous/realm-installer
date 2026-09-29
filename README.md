@@ -58,4 +58,5 @@ bash <(curl -fsSL https://ghproxy.net/https://raw.githubusercontent.com/qingshou
 
 - realm 上游（zhboner/realm）已归档停更，「更新内核」实际为重装 latest 版，可用于修复损坏
 - 支持 TCP + UDP 双协议转发
+- **realm 不允许空配置运行**（TOML 必须至少一条 `[[endpoints]]`）：安装后服务暂不启动，添加第一条规则时自动启动并设置自启；删除到最后一条规则时服务自动停止
 - 删除规则不会自动回收防火墙已放行的端口，如有需要请手动关闭
