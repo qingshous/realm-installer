@@ -6,6 +6,7 @@
 
 - **全系统兼容**：Debian / Ubuntu（apt）、CentOS（dnf/yum）、Alpine（apk）自动识别，按需安装缺失依赖
 - **三级服务托管**：systemd → OpenRC → nohup + pidfile 自动降级，无 systemd 的 NAT 机/LXC 容器也能跑（OpenRC 原生自启，nohup 模式尽力 crontab @reboot）
+- **OpenRC 进程自愈**：OpenRC 用 `supervise-daemon` 托管，进程崩溃后 10 秒自动重启（systemd 用 `Restart=on-failure`），告别 realm 异常退出后无人拉起的坑
 - **musl libc 支持**：自动检测 glibc/musl，Alpine 直接下载官方 musl 构建，无需 gcompat（原版下的 gnu 版在 Alpine 根本跑不了）
 - **菜单循环**：原版选完一项就退出，现改为循环菜单
 - **修复服务文件冲突**：删除原版 `User=root` + `DynamicUser=true` 的矛盾组合

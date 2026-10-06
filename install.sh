@@ -8,7 +8,7 @@
 # 快捷指令: 安装后输入 rl 即可打开菜单 (rl = realm light)
 # =========================================================
 
-VERSION="2.0.2"
+VERSION="2.0.3"
 
 # 脚本的 Raw 链接 (用于安装快捷命令及自更新)
 SCRIPT_URL="https://raw.githubusercontent.com/qingshous/realm-installer/main/install.sh"
@@ -341,16 +341,24 @@ WantedBy=multi-user.target
 EOF
         systemctl daemon-reload
     elif has_openrc; then
+        # 若已存在旧版无守护的服务文件(command_background 无自愈), 强制重写为 supervise-daemon 版
+        if [ -e "$OPENRC_FILE" ] || [ -L "$OPENRC_FILE" ]; then
+            if ! grep -q 'supervise-daemon' "$OPENRC_FILE" 2>/dev/null; then
+                rm -f "$OPENRC_FILE"
+            fi
+        fi
         cat > "$OPENRC_FILE" <<EOF
 #!/sbin/openrc-run
 name="realm"
 description="realm port relay"
+supervisor=supervise-daemon
 command="${BIN_PATH}"
 command_args="-c ${CONFIG_FILE}"
-command_background=true
-pidfile="${PID_FILE}"
-output_log="${LOG_FILE}"
-error_log="${LOG_FILE}"
+respawn_delay=10
+respawn_max=0
+supervise_daemon_args="--stdout ${LOG_FILE} --stderr ${LOG_FILE}"
+pidfile="/run/realm.pid"
+rc_ulimit="-n 65535"
 depend() { need net; }
 EOF
         chmod +x "$OPENRC_FILE"
